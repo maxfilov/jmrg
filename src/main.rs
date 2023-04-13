@@ -1,12 +1,12 @@
 use serde_json;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{BinaryHeap, HashSet};
 use std::env;
 mod config;
 mod error;
 use infer::{MatcherType, Type};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{stdin, BufRead, BufReader, BufWriter, Lines, Read, Stdout, Write};
 
 thread_local!(
     static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new())
@@ -19,7 +19,7 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
         // Wrap stdin as our sole input
         Ok(vec![BufReader::with_capacity(
             BUF_SIZE,
-            Box::new(std::io::stdin()) as Box<dyn Read>,
+            Box::new(stdin()) as Box<dyn Read>,
         )])
     } else {
         let mut readers: Vec<BufReader<Box<dyn Read>>> = vec![];
@@ -53,7 +53,7 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
 }
 
 struct Source {
-    it: std::io::Lines<BufReader<Box<dyn Read>>>,
+    it: Lines<BufReader<Box<dyn Read>>>,
     value: Option<String>,
     ts: Option<i64>,
 }
@@ -178,12 +178,12 @@ fn main() -> Result<(), error::MrgError> {
     let args = config::parse(env::args().collect::<Vec<String>>())?;
     KEYS.with(|s| s.borrow_mut().extend(args.keys));
 
-    let mut sources: std::collections::BinaryHeap<Source> = make_readers(&args.paths)?
+    let mut sources: BinaryHeap<Source> = make_readers(&args.paths)?
         .into_iter()
         .map(|buf_reader| Source::new(buf_reader))
         .filter(|s| s.has_value())
         .collect();
-    let mut out = std::io::BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
+    let mut out: BufWriter<Stdout> = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
     while !sources.is_empty() {
         let mut source: Source = sources.pop().unwrap();
         writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
