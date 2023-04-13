@@ -5,6 +5,7 @@
 
 This can be useful for combining multiple data
 sources or processing large datasets that have been split into smaller files.
+The main reason I created this software in the first place was to merge multiple log files from different services.
 
 ## Installation
 
@@ -15,7 +16,7 @@ cargo install --git https://github.com/maxfilov/jmrg
 
 ## Usage
 
-To use `jmrg`, simply specify the input files as command line arguments and redirect
+To use `jmrg`, specify the input files as command line arguments and redirect
 the output to a file or another command. For example:
 ```shell
 jmrg input1.ndjson input2.ndjson > output.ndjson
