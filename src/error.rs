@@ -7,15 +7,15 @@ pub struct MrgError {
 
 impl Display for MrgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "{}", self.msg);
+        write!(f, "{}", self.msg)
     }
 }
 
 impl From<clap::error::Error> for MrgError {
     fn from(value: clap::error::Error) -> Self {
-        return MrgError {
+        MrgError {
             msg: format!("cannot parse command line: {}", value),
-        };
+        }
     }
 }
 
@@ -32,9 +32,9 @@ fn mrg_error_from_clap_error() {
 
 impl From<serde_json::Error> for MrgError {
     fn from(value: serde_json::Error) -> Self {
-        return MrgError {
+        MrgError {
             msg: format!("cannot parse JSON: {}", value),
-        };
+        }
     }
 }
 
@@ -52,9 +52,9 @@ fn mrg_error_from_serde_error() {
 
 impl From<std::io::Error> for MrgError {
     fn from(value: std::io::Error) -> Self {
-        return MrgError {
+        MrgError {
             msg: format!("cannot perform IO: {}", value),
-        };
+        }
     }
 }
 
