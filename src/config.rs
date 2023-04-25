@@ -33,3 +33,33 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
         .collect::<Vec<String>>();
     return Ok(Arguments { keys, paths });
 }
+
+#[test]
+fn valid_parse() {
+    let args = vec![
+        "program_name",
+        "-k",
+        "hello",
+        "-k",
+        "world",
+        "1.log",
+        "2.log",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect::<Vec<String>>();
+    let parsed = parse(args).unwrap();
+    assert_eq!(parsed.paths, vec!["1.log", "2.log"]);
+    assert_eq!(parsed.keys, vec!["hello", "world"]);
+}
+
+#[test]
+fn no_keys() {
+    let args = vec!["program_name", "1.log", "2.log"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+    let parsed = parse(args).unwrap();
+    assert_eq!(parsed.paths, vec!["1.log", "2.log"]);
+    assert_eq!(parsed.keys, vec!["timestamp"]);
+}
