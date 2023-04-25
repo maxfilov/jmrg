@@ -28,7 +28,7 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
         .collect::<Vec<String>>();
     let paths: Vec<String> = matches
         .get_many::<String>("files")
-        .unwrap_or_default()
+        .unwrap()
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
     return Ok(Arguments { keys, paths });

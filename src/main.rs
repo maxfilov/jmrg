@@ -6,7 +6,7 @@ mod config;
 mod error;
 use infer::{MatcherType, Type};
 use std::fs::File;
-use std::io::{stdin, BufRead, BufReader, BufWriter, Lines, Read, Stdout, Write};
+use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Stdout, Write};
 
 thread_local!(
     static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new())
@@ -14,42 +14,39 @@ thread_local!(
 
 const BUF_SIZE: usize = 1024 * 1024;
 
-fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, error::MrgError> {
-    if paths.is_empty() {
-        // Wrap stdin as our sole input
-        Ok(vec![BufReader::with_capacity(
-            BUF_SIZE,
-            Box::new(stdin()) as Box<dyn Read>,
-        )])
-    } else {
-        let mut readers: Vec<BufReader<Box<dyn Read>>> = vec![];
-        for path in paths {
-            let file = File::open(path)?;
-            let inferred_type: Option<Type> = infer::get_from_path(path).unwrap();
-            readers.push(BufReader::with_capacity(
-                BUF_SIZE,
-                match inferred_type {
-                    Some(t) => match t.matcher_type() {
-                        MatcherType::Archive => {
-                            Box::new(flate2::read::GzDecoder::new(file)) as Box<dyn Read>
-                        }
-                        MatcherType::Text => Box::new(file) as Box<dyn Read>,
-                        _ => {
-                            return Err(error::MrgError {
-                                msg: String::from(format!(
-                                    "cannot read '{}': unknown type: {}",
-                                    path,
-                                    t.mime_type()
-                                )),
-                            })
-                        }
-                    },
-                    None => Box::new(file) as Box<dyn Read>,
-                },
-            ));
-        }
-        Ok(readers)
+fn open_file(path: &String, file: File) -> Result<Box<dyn Read>, error::MrgError> {
+    let maybe_inferred_type: Option<Type> = infer::get_from_path(path).unwrap();
+
+    if None == maybe_inferred_type {
+        return Ok(Box::new(file));
     }
+
+    let inferred_type = maybe_inferred_type.unwrap();
+    if inferred_type.matcher_type() != MatcherType::Archive {
+        return Ok(Box::new(file));
+    }
+
+    let mime = inferred_type.mime_type();
+    match mime {
+        "gz" => Ok(Box::new(flate2::read::GzDecoder::new(file))),
+        "bz2" => Ok(Box::new(bzip2::read::BzDecoder::new(file))),
+        _ => Err(error::MrgError {
+            msg: format!("cannot open archive of type {}", mime),
+        }),
+    }
+}
+
+fn make_reader(path: &String) -> Result<BufReader<Box<dyn Read>>, error::MrgError> {
+    let file: File = File::open(path)?;
+    return Ok(BufReader::with_capacity(BUF_SIZE, open_file(path, file)?));
+}
+
+fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, error::MrgError> {
+    let mut readers: Vec<BufReader<Box<dyn Read>>> = vec![];
+    for path in paths {
+        readers.push(make_reader(path)?);
+    }
+    Ok(readers)
 }
 
 struct Source {
