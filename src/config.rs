@@ -31,7 +31,7 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
         .unwrap()
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
-    return Ok(Arguments { keys, paths });
+    Ok(Arguments { keys, paths })
 }
 
 #[test]

@@ -38,7 +38,7 @@ fn open_file(path: &String, file: File) -> Result<Box<dyn Read>, error::MrgError
 
 fn make_reader(path: &String) -> Result<BufReader<Box<dyn Read>>, error::MrgError> {
     let file: File = File::open(path)?;
-    return Ok(BufReader::with_capacity(BUF_SIZE, open_file(path, file)?));
+    Ok(BufReader::with_capacity(BUF_SIZE, open_file(path, file)?))
 }
 
 fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, error::MrgError> {
@@ -68,24 +68,24 @@ impl Source {
                 Err(_) => continue,
             };
         }
-        return source;
+        source
     }
 
     fn has_value(&self) -> bool {
-        return self.ts.is_some();
+        self.ts.is_some()
     }
 
     fn fetch_next(&mut self) -> Result<(), error::MrgError> {
         let n = self.it.next();
         if n.is_none() {
             self.ts = None;
-            return Ok(());
+        } else {
+            let value = n.unwrap().unwrap();
+            let event: Event = serde_json::from_str(value.as_str())?;
+            self.ts = Some(event.timestamp);
+            self.value = Some(value);
         }
-        let value = n.unwrap().unwrap();
-        let event: Event = serde_json::from_str(value.as_str())?;
-        self.ts = Some(event.timestamp);
-        self.value = Some(value);
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -93,19 +93,19 @@ impl Eq for Source {}
 
 impl PartialEq<Self> for Source {
     fn eq(&self, other: &Self) -> bool {
-        return self.ts.unwrap() == other.ts.unwrap();
+        self.ts.unwrap() == other.ts.unwrap()
     }
 }
 
 impl PartialOrd<Self> for Source {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        return Some(other.ts.unwrap().cmp(&self.ts.unwrap()));
+        Some(other.ts.unwrap().cmp(&self.ts.unwrap()))
     }
 }
 
 impl Ord for Source {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        return other.ts.cmp(&self.ts);
+        other.ts.cmp(&self.ts)
     }
 }
 
@@ -115,7 +115,7 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
     type Value = Event;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        return write!(
+        write!(
             formatter,
             "map with keys from set '{}'",
             KEYS.with(|s| {
@@ -125,7 +125,7 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
                     .collect::<Vec<&str>>()
                     .join(", ")
             })
-        );
+        )
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
@@ -142,7 +142,7 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
             }
         }
 
-        return match ts {
+        match ts {
             Some(val) => Ok(Event { timestamp: val }),
             None => Err(serde::de::Error::custom(format!(
                 "missing one the fields of set '{}'",
@@ -154,7 +154,7 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
                         .join(", ")
                 })
             ))),
-        };
+        }
     }
 }
 
@@ -190,5 +190,5 @@ fn main() -> Result<(), error::MrgError> {
         }
         sources.push(source);
     }
-    return Ok(());
+    Ok(())
 }
