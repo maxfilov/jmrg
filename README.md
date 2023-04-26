@@ -5,12 +5,14 @@
 
 This can be useful for combining multiple data
 sources or processing large datasets that have been split into smaller files.
-The main reason I created this software in the first place was to merge multiple log files from different services.
+The best example of this is merging of multiple log files.
+
+It uses [infer](https://docs.rs/infer/latest/infer/) to determine the file extension and can handle plain text, 
+gzip-compressed and bzip2-compressed files.
 
 ## Installation
 
 The pre-built binaries can be found on the [releases page in GitHub](https://github.com/maxfilov/jmrg/releases).
-
 
 If you want to build it yourself, you can use [cargo](https://github.com/rust-lang/cargo):
 ```shell
