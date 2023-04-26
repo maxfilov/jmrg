@@ -6,7 +6,7 @@ mod config;
 mod error;
 use infer::{MatcherType, Type};
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Stdout, Write};
+use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
 thread_local!(
     static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new())
@@ -171,16 +171,15 @@ impl<'de> serde::de::Deserialize<'de> for Event {
     }
 }
 
-fn main() -> Result<(), error::MrgError> {
-    let args = config::parse(env::args().collect::<Vec<String>>())?;
-    KEYS.with(|s| s.borrow_mut().extend(args.keys));
-
-    let mut sources: BinaryHeap<Source> = make_readers(&args.paths)?
+fn run<T: Write>(
+    ins: Vec<BufReader<Box<dyn Read>>>,
+    mut out: BufWriter<T>,
+) -> Result<(), error::MrgError> {
+    let mut sources: BinaryHeap<Source> = ins
         .into_iter()
         .map(|buf_reader| Source::new(buf_reader))
         .filter(|s| s.has_value())
         .collect();
-    let mut out: BufWriter<Stdout> = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
     while !sources.is_empty() {
         let mut source: Source = sources.pop().unwrap();
         writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
@@ -191,4 +190,15 @@ fn main() -> Result<(), error::MrgError> {
         sources.push(source);
     }
     Ok(())
+}
+
+fn main() -> Result<(), error::MrgError> {
+    let args = config::parse(env::args().collect::<Vec<String>>())?;
+    KEYS.with(|s| s.borrow_mut().extend(args.keys));
+
+    let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
+    run(
+        sources,
+        BufWriter::with_capacity(BUF_SIZE, std::io::stdout()),
+    )
 }
