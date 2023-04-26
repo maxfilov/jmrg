@@ -9,7 +9,10 @@ The main reason I created this software in the first place was to merge multiple
 
 ## Installation
 
-You can install `jmrg` using cargo:
+The pre-built binaries can be found on the [releases page in GitHub](https://github.com/maxfilov/jmrg/releases).
+
+
+If you want to build it yourself, you can use [cargo](https://github.com/rust-lang/cargo):
 ```shell
 cargo install --git https://github.com/maxfilov/jmrg
 ```
