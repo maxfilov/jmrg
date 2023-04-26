@@ -26,12 +26,12 @@ fn open_file(path: &String, file: File) -> Result<Box<dyn Read>, error::MrgError
         return Ok(Box::new(file));
     }
 
-    let mime = inferred_type.mime_type();
-    match mime {
+    let extension = inferred_type.extension();
+    match extension {
         "gz" => Ok(Box::new(flate2::read::GzDecoder::new(file))),
         "bz2" => Ok(Box::new(bzip2::read::BzDecoder::new(file))),
         _ => Err(error::MrgError {
-            msg: format!("cannot open archive of type {}", mime),
+            msg: format!("cannot open archive of type {}", extension),
         }),
     }
 }
@@ -171,7 +171,7 @@ impl<'de> serde::de::Deserialize<'de> for Event {
     }
 }
 
-fn run<T: Write>(
+pub fn run<T: Write>(
     ins: Vec<BufReader<Box<dyn Read>>>,
     mut out: BufWriter<T>,
 ) -> Result<(), error::MrgError> {
