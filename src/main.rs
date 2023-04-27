@@ -57,35 +57,45 @@ struct Source {
 
 impl Source {
     fn new(s: BufReader<Box<dyn Read>>) -> Source {
-        let mut source = Source {
+        let source = Source {
             it: s.lines(),
             value: None,
             ts: None,
         };
-        loop {
-            match source.fetch_next() {
-                Ok(_) => break,
-                Err(_) => continue,
-            };
-        }
-        source
+        source.fetch_next()
     }
 
     fn has_value(&self) -> bool {
         self.ts.is_some()
     }
 
-    fn fetch_next(&mut self) -> Result<(), error::MrgError> {
-        let n = self.it.next();
-        if n.is_none() {
-            self.ts = None;
-        } else {
-            let value = n.unwrap().unwrap();
-            let event: Event = serde_json::from_str(value.as_str())?;
-            self.ts = Some(event.timestamp);
-            self.value = Some(value);
+    fn fetch_next(mut self) -> Self {
+        loop {
+            let maybe_next_line: Option<std::io::Result<String>> = self.it.next();
+            match maybe_next_line {
+                Some(next_line) => match next_line {
+                    Ok(value) => {
+                        let parsed_event: serde_json::Result<Event> =
+                            serde_json::from_str(value.as_str());
+                        match parsed_event {
+                            Ok(event) => {
+                                self.ts = Some(event.timestamp);
+                                self.value = Some(value);
+                                break;
+                            }
+                            Err(e) => continue,
+                        }
+                    }
+                    Err(e) => continue,
+                },
+                None => {
+                    self.ts = None;
+                    self.value = None;
+                    break;
+                }
+            }
         }
-        Ok(())
+        return self;
     }
 }
 
@@ -183,7 +193,7 @@ pub fn run<T: Write>(
     while !sources.is_empty() {
         let mut source: Source = sources.pop().unwrap();
         writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
-        source.fetch_next()?;
+        source = source.fetch_next();
         if !source.has_value() {
             continue;
         }
