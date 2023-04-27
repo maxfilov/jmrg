@@ -75,11 +75,11 @@ impl Source {
             match maybe_next_line {
                 Some(next_line) => match next_line {
                     Ok(value) => {
-                        let parsed_event: serde_json::Result<Event> =
+                        let parsed_entry: serde_json::Result<Entry> =
                             serde_json::from_str(value.as_str());
-                        match parsed_event {
-                            Ok(event) => {
-                                self.ts = Some(event.timestamp);
+                        match parsed_entry {
+                            Ok(entry) => {
+                                self.ts = Some(entry.key);
                                 self.value = Some(value);
                                 break;
                             }
@@ -119,10 +119,10 @@ impl Ord for Source {
     }
 }
 
-struct EventVisitor;
+struct EntryVisitor;
 
-impl<'de> serde::de::Visitor<'de> for EventVisitor {
-    type Value = Event;
+impl<'de> serde::de::Visitor<'de> for EntryVisitor {
+    type Value = Entry;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
@@ -153,7 +153,7 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
         }
 
         match ts {
-            Some(val) => Ok(Event { timestamp: val }),
+            Some(val) => Ok(Entry { key: val }),
             None => Err(serde::de::Error::custom(format!(
                 "missing one the fields of set '{}'",
                 KEYS.with(|s| {
@@ -168,16 +168,16 @@ impl<'de> serde::de::Visitor<'de> for EventVisitor {
     }
 }
 
-struct Event {
-    timestamp: i64,
+struct Entry {
+    key: i64,
 }
 
-impl<'de> serde::de::Deserialize<'de> for Event {
+impl<'de> serde::de::Deserialize<'de> for Entry {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::de::Deserializer<'de>,
     {
-        deserializer.deserialize_map(EventVisitor)
+        deserializer.deserialize_map(EntryVisitor)
     }
 }
 
