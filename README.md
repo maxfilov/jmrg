@@ -28,6 +28,9 @@ jmrg input1.ndjson input2.ndjson > output.ndjson
 ```
 This will merge the contents of `input1.ndjson` and `input2.ndjson` into a single sorted stream and write it to `output.ndjson`.
 
+If utility can not find any of the specified keys, it omits the entry completely.
+By default, there are only one key: `"timestamp"`.
+
 You can also pipe the output of `jmrg` to another command for further processing:
 ```shell
 jmrg input1.ndjson input2.ndjson | jq '.timestamp' > output.txt
