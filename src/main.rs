@@ -83,10 +83,16 @@ impl Source {
                                 self.value = Some(value);
                                 break;
                             }
-                            Err(e) => continue,
+                            Err(e) => {
+                                write!(std::io::stderr(), "cannot parse entry: {}", e).expect("failed to write error");
+                                continue;
+                            },
                         }
                     }
-                    Err(e) => continue,
+                    Err(e) => {
+                        write!(std::io::stderr(), "cannot get next line: {}", e).expect("failed to write error");
+                        continue;
+                    },
                 },
                 None => {
                     self.ts = None;
@@ -95,7 +101,7 @@ impl Source {
                 }
             }
         }
-        return self;
+        self
     }
 }
 
