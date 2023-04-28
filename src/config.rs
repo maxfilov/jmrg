@@ -24,12 +24,12 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
     let keys = matches
         .get_many::<String>("keys")
         .unwrap()
-        .map(|s| s.to_string())
+        .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     let paths: Vec<String> = matches
         .get_many::<String>("files")
         .unwrap()
-        .map(|s| s.to_string())
+        .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     Ok(Arguments { keys, paths })
 }
