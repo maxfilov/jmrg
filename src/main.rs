@@ -84,13 +84,13 @@ impl Source {
                                 break;
                             }
                             Err(e) => {
-                                write!(std::io::stderr(), "cannot parse entry: {}", e).expect("failed to write error");
+                                writeln!(std::io::stderr(), "cannot parse entry: {}", e).expect("failed to write error");
                                 continue;
                             },
                         }
                     }
                     Err(e) => {
-                        write!(std::io::stderr(), "cannot get next line: {}", e).expect("failed to write error");
+                        writeln!(std::io::stderr(), "cannot get next line: {}", e).expect("failed to write error");
                         continue;
                     },
                 },
