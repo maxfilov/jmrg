@@ -23,12 +23,12 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
         .get_matches_from(args);
     let keys = matches
         .get_many::<String>("keys")
-        .unwrap()
+        .ok_or(error::MrgError{msg: format!("no 'keys' are provided")})?
         .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     let paths: Vec<String> = matches
         .get_many::<String>("files")
-        .unwrap()
+        .ok_or(error::MrgError{msg: format!("no 'files' provided")})?
         .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     Ok(Arguments { keys, paths })
