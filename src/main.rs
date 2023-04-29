@@ -9,7 +9,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
 thread_local!(
-    static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new())
+    static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    static KEYS_STR: RefCell<String> = RefCell::new(String::new());
 );
 
 const BUF_SIZE: usize = 1024 * 1024;
@@ -72,34 +73,30 @@ impl Source {
     fn fetch_next(mut self) -> Self {
         loop {
             let maybe_next_line: Option<std::io::Result<String>> = self.it.next();
-            match maybe_next_line {
-                Some(next_line) => match next_line {
-                    Ok(value) => {
-                        let parsed_entry: serde_json::Result<Entry> =
-                            serde_json::from_str(value.as_str());
-                        match parsed_entry {
-                            Ok(entry) => {
-                                self.ts = Some(entry.key);
-                                self.value = Some(value);
-                                break;
-                            }
-                            Err(e) => {
-                                writeln!(std::io::stderr(), "cannot parse entry: {}", e).expect("failed to write error");
-                                continue;
-                            },
-                        }
-                    }
-                    Err(e) => {
-                        writeln!(std::io::stderr(), "cannot get next line: {}", e).expect("failed to write error");
-                        continue;
-                    },
-                },
-                None => {
-                    self.ts = None;
-                    self.value = None;
-                    break;
-                }
+            if maybe_next_line.is_none() {
+                self.ts = None;
+                self.value = None;
+                break;
             }
+            let next_line: std::io::Result<String> = unsafe { maybe_next_line.unwrap_unchecked() };
+            if next_line.is_err() {
+                eprintln!("cannot get next line: {}", unsafe {
+                    next_line.unwrap_err_unchecked()
+                });
+                continue;
+            }
+            let value: String = unsafe { next_line.unwrap_unchecked() };
+            let parsed_entry: serde_json::Result<Entry> = serde_json::from_str(value.as_str());
+            if parsed_entry.is_err() {
+                eprintln!("cannot parse entry: {}", unsafe {
+                    parsed_entry.unwrap_err_unchecked()
+                });
+                continue;
+            }
+            let entry: Entry = unsafe { parsed_entry.unwrap_unchecked() };
+            self.ts = Some(entry.key);
+            self.value = Some(value);
+            break;
         }
         self
     }
@@ -109,13 +106,13 @@ impl Eq for Source {}
 
 impl PartialEq<Self> for Source {
     fn eq(&self, other: &Self) -> bool {
-        self.ts.unwrap() == other.ts.unwrap()
+        unsafe { self.ts.unwrap_unchecked() == other.ts.unwrap_unchecked() }
     }
 }
 
 impl PartialOrd<Self> for Source {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.ts.unwrap().cmp(&self.ts.unwrap()))
+        unsafe { Some(other.ts.unwrap_unchecked().cmp(&self.ts.unwrap_unchecked())) }
     }
 }
 
@@ -131,17 +128,9 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor {
     type Value = Entry;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            formatter,
-            "map with keys from set '{}'",
-            KEYS.with(|s| {
-                s.borrow()
-                    .iter()
-                    .map(|x| x.as_str())
-                    .collect::<Vec<&str>>()
-                    .join(", ")
-            })
-        )
+        KEYS_STR.with(|s: &RefCell<String>| {
+            write!(formatter, "map with keys from set '{}'", s.borrow())
+        })
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
@@ -160,16 +149,12 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor {
 
         match ts {
             Some(val) => Ok(Entry { key: val }),
-            None => Err(serde::de::Error::custom(format!(
-                "missing one the fields of set '{}'",
-                KEYS.with(|s| {
+            None => KEYS_STR.with(|s: &RefCell<String>| {
+                Err(serde::de::Error::custom(format!(
+                    "missing one the fields of set '{}'",
                     s.borrow()
-                        .iter()
-                        .map(|x| x.as_str())
-                        .collect::<Vec<&str>>()
-                        .join(", ")
-                })
-            ))),
+                )))
+            }),
         }
     }
 }
@@ -193,11 +178,11 @@ pub fn run<T: Write>(
 ) -> Result<(), error::MrgError> {
     let mut sources: BinaryHeap<Source> = ins
         .into_iter()
-        .map(|buf_reader| Source::new(buf_reader))
-        .filter(|s| s.has_value())
+        .map(|buf_reader: BufReader<Box<dyn Read>>| Source::new(buf_reader))
+        .filter(|s: &Source| s.has_value())
         .collect();
     while !sources.is_empty() {
-        let mut source: Source = sources.pop().unwrap();
+        let mut source: Source = unsafe { sources.pop().unwrap_unchecked() };
         writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
         source = source.fetch_next();
         if !source.has_value() {
@@ -211,9 +196,7 @@ pub fn run<T: Write>(
 fn main() -> Result<(), error::MrgError> {
     let maybe_args = config::parse(env::args().collect::<Vec<String>>());
     let args = match maybe_args {
-        Ok(args) => {
-            args
-        }
+        Ok(args) => args,
         Err(e) => {
             eprintln!("{}", e.msg);
             eprintln!("command arguments are invalid, run with '-h' to see usage");
@@ -221,6 +204,18 @@ fn main() -> Result<(), error::MrgError> {
         }
     };
     KEYS.with(|s| s.borrow_mut().extend(args.keys));
+    KEYS_STR.with(|keys_str| {
+        keys_str.borrow_mut().push_str(
+            KEYS.with(|s| {
+                s.borrow()
+                    .iter()
+                    .map(|x| x.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", ")
+            })
+            .as_str(),
+        );
+    });
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
     run(
