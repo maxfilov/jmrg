@@ -209,7 +209,17 @@ pub fn run<T: Write>(
 }
 
 fn main() -> Result<(), error::MrgError> {
-    let args = config::parse(env::args().collect::<Vec<String>>())?;
+    let maybe_args = config::parse(env::args().collect::<Vec<String>>());
+    let args = match maybe_args {
+        Ok(args) => {
+            args
+        }
+        Err(e) => {
+            eprintln!("{}", e.msg);
+            eprintln!("command arguments are invalid, run with '-h' to see usage");
+            std::process::exit(1);
+        }
+    };
     KEYS.with(|s| s.borrow_mut().extend(args.keys));
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
