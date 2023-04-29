@@ -194,15 +194,16 @@ pub fn run<T: Write>(
 }
 
 fn main() -> Result<(), error::MrgError> {
-    let maybe_args = config::parse(env::args().collect::<Vec<String>>());
-    let args = match maybe_args {
-        Ok(args) => args,
-        Err(e) => {
-            eprintln!("{}", e.msg);
-            eprintln!("command arguments are invalid, run with '-h' to see usage");
-            std::process::exit(1);
-        }
-    };
+    let cmd_args: Vec<String> = env::args().collect();
+    let maybe_args: Result<config::Arguments, error::MrgError> = config::parse(cmd_args);
+    if maybe_args.is_err() {
+        eprintln!("{}", unsafe { maybe_args.unwrap_err_unchecked() });
+        eprintln!("command arguments are invalid, run with '-h' to see usage");
+        std::process::exit(1);
+    }
+    let args: config::Arguments = maybe_args.unwrap();
+
+    // global semi-contants initialization
     KEYS.with(|s| s.borrow_mut().extend(args.keys));
     KEYS_STR.with(|keys_str| {
         keys_str.borrow_mut().push_str(
@@ -218,8 +219,6 @@ fn main() -> Result<(), error::MrgError> {
     });
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
-    run(
-        sources,
-        BufWriter::with_capacity(BUF_SIZE, std::io::stdout()),
-    )
+    let output: BufWriter<std::io::Stdout> = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
+    run(sources, output)
 }
