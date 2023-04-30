@@ -1,6 +1,7 @@
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt}; // Add methods on commands
 
 #[test]
+#[ignore]
 fn normal_run() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = std::process::Command::cargo_bin("jmrg")?;
     cmd.args(vec!["-k", "t"])

@@ -175,7 +175,7 @@ impl<'de> serde::de::Deserialize<'de> for Entry {
 pub fn run<Input: BufRead, Output: Write>(
     keys: Vec<String>,
     ins: Vec<Input>,
-    mut out: Output,
+    out: &mut Output,
 ) -> Result<(), error::MrgError> {
     // global semi-contants initialization
     KEYS.with(|s| s.borrow_mut().extend(keys));
@@ -219,6 +219,52 @@ fn main() -> Result<(), error::MrgError> {
     let args: config::Arguments = maybe_args.unwrap();
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
-    let output: BufWriter<std::io::Stdout> = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
-    run(args.keys, sources, output)
+    let mut output: BufWriter<std::io::Stdout> =
+        BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
+    run(args.keys, sources, &mut output)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::BufRead;
+    #[test]
+    fn normal_run() {
+        let keys = vec![String::from("t")];
+        let in1 = std::io::BufReader::new(stringreader::StringReader::new(
+            r#"
+{"t":15, "add": "15_1"}
+{"t":16, "add": "16_1"}
+{"t":18, "add": "18_1"}
+"#,
+        ));
+        let in2 = std::io::BufReader::new(stringreader::StringReader::new(
+            r#"
+{"t":16, "add": "16_2"}
+{"t":17, "add": "17_2"}
+{"t":18, "add": "18_2"}
+"#,
+        ));
+        let mut buf = std::io::BufWriter::new(Vec::new());
+        crate::run(keys, vec![in1, in2], &mut buf).unwrap();
+        let result = String::from_utf8(buf.into_inner().unwrap()).unwrap();
+        assert_eq!(
+            r#"{"t":15, "add": "15_1"}
+{"t":16, "add": "16_2"}
+{"t":16, "add": "16_1"}
+{"t":17, "add": "17_2"}
+{"t":18, "add": "18_1"}
+{"t":18, "add": "18_2"}
+"#,
+            result
+        );
+    }
+
+    #[test]
+    fn open_file() {
+        let mut r = crate::make_reader(&String::from("tests/data/1.json")).unwrap();
+        let mut line = String::new();
+        r.read_line(&mut line).unwrap();
+        let replaced = line.replace("\r", "").replace("\n", "");
+        assert_eq!(r#"{"t":15, "add": "15_1"}"#, replaced);
+    }
 }
