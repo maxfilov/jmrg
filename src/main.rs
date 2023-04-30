@@ -6,7 +6,7 @@ mod config;
 mod error;
 use infer::{MatcherType, Type};
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Lines, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
 thread_local!(
     static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -50,13 +50,13 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
     Ok(readers)
 }
 
-struct Source<T: std::io::BufRead> {
+struct Source<T: BufRead> {
     it: Lines<T>,
     value: Option<String>,
     ts: Option<i64>,
 }
 
-impl<T: std::io::BufRead> Source<T> {
+impl<T: BufRead> Source<T> {
     fn new(s: T) -> Self {
         let source = Source {
             it: s.lines(),
@@ -102,21 +102,21 @@ impl<T: std::io::BufRead> Source<T> {
     }
 }
 
-impl<T: std::io::BufRead> Eq for Source<T> {}
+impl<T: BufRead> Eq for Source<T> {}
 
-impl<T: std::io::BufRead> PartialEq<Self> for Source<T> {
+impl<T: BufRead> PartialEq<Self> for Source<T> {
     fn eq(&self, other: &Self) -> bool {
         unsafe { self.ts.unwrap_unchecked() == other.ts.unwrap_unchecked() }
     }
 }
 
-impl<T: std::io::BufRead> PartialOrd<Self> for Source<T> {
+impl<T: BufRead> PartialOrd<Self> for Source<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         unsafe { Some(other.ts.unwrap_unchecked().cmp(&self.ts.unwrap_unchecked())) }
     }
 }
 
-impl<T: std::io::BufRead> Ord for Source<T> {
+impl<T: BufRead> Ord for Source<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other.ts.cmp(&self.ts)
     }
@@ -172,18 +172,17 @@ impl<'de> serde::de::Deserialize<'de> for Entry {
     }
 }
 
-pub fn run<T: Write>(
-    ins: Vec<BufReader<Box<dyn Read>>>,
-    mut out: BufWriter<T>,
+pub fn run<Input: BufRead, Output: Write>(
+    ins: Vec<Input>,
+    mut out: BufWriter<Output>,
 ) -> Result<(), error::MrgError> {
-    let mut sources: BinaryHeap<Source<BufReader<Box<dyn Read>>>> = ins
+    let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
-        .map(|buf_reader: BufReader<Box<dyn Read>>| Source::new(buf_reader))
-        .filter(|s: &Source<BufReader<Box<dyn Read>>>| s.has_value())
+        .map(|input: Input| Source::new(input))
+        .filter(|s: &Source<Input>| s.has_value())
         .collect();
     while !sources.is_empty() {
-        let mut source: Source<BufReader<Box<dyn Read>>> =
-            unsafe { sources.pop().unwrap_unchecked() };
+        let mut source: Source<Input> = unsafe { sources.pop().unwrap_unchecked() };
         writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
         source = source.fetch_next();
         if !source.has_value() {
