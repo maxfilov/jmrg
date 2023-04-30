@@ -173,9 +173,24 @@ impl<'de> serde::de::Deserialize<'de> for Entry {
 }
 
 pub fn run<Input: BufRead, Output: Write>(
+    keys: Vec<String>,
     ins: Vec<Input>,
-    mut out: BufWriter<Output>,
+    mut out: Output,
 ) -> Result<(), error::MrgError> {
+    // global semi-contants initialization
+    KEYS.with(|s| s.borrow_mut().extend(keys));
+    KEYS_STR.with(|keys_str| {
+        keys_str.borrow_mut().push_str(
+            KEYS.with(|s| {
+                s.borrow()
+                    .iter()
+                    .map(|x| x.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", ")
+            })
+            .as_str(),
+        );
+    });
     let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
         .map(|input: Input| Source::new(input))
@@ -203,22 +218,7 @@ fn main() -> Result<(), error::MrgError> {
     }
     let args: config::Arguments = maybe_args.unwrap();
 
-    // global semi-contants initialization
-    KEYS.with(|s| s.borrow_mut().extend(args.keys));
-    KEYS_STR.with(|keys_str| {
-        keys_str.borrow_mut().push_str(
-            KEYS.with(|s| {
-                s.borrow()
-                    .iter()
-                    .map(|x| x.as_str())
-                    .collect::<Vec<&str>>()
-                    .join(", ")
-            })
-            .as_str(),
-        );
-    });
-
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
     let output: BufWriter<std::io::Stdout> = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
-    run(sources, output)
+    run(args.keys, sources, output)
 }
