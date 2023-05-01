@@ -178,13 +178,13 @@ pub fn run<Input: BufRead, Output: Write>(
     out: &mut Output,
 ) -> Result<(), error::MrgError> {
     // global semi-contants initialization
-    KEYS.with(|s| s.borrow_mut().extend(keys));
-    KEYS_STR.with(|keys_str| {
+    KEYS.with(|s: &RefCell<HashSet<String>>| s.borrow_mut().extend(keys));
+    KEYS_STR.with(|keys_str: &RefCell<String>| {
         keys_str.borrow_mut().push_str(
-            KEYS.with(|s| {
+            KEYS.with(|s: &RefCell<HashSet<String>>| {
                 s.borrow()
                     .iter()
-                    .map(|x| x.as_str())
+                    .map(|x: &String| x.as_str())
                     .collect::<Vec<&str>>()
                     .join(", ")
             })
