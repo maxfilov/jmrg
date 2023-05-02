@@ -1,12 +1,14 @@
-use serde_json;
 use std::cell::RefCell;
 use std::collections::{BinaryHeap, HashSet};
 use std::env;
-mod config;
-mod error;
-use infer::{MatcherType, Type};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
+
+use serde_json;
+use infer::{MatcherType, Type};
+
+mod config;
+mod error;
 
 thread_local!(
     static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
