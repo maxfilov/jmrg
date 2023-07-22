@@ -31,11 +31,6 @@ This will merge the contents of `input1.ndjson` and `input2.ndjson` into a singl
 If utility can not find any of the specified keys, it omits the entry completely.
 By default, there are only one key: `"timestamp"`.
 
-You can also pipe the output of `jmrg` to another command for further processing:
-```shell
-jmrg input1.ndjson input2.ndjson | jq '.timestamp' > output.txt
-```
-
 ### Command line options
 
 `jmrg` supports the following options:
