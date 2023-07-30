@@ -4,8 +4,8 @@ use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
-use serde_json;
 use infer::{MatcherType, Type};
+use serde_json;
 
 mod config;
 mod error;
@@ -17,7 +17,25 @@ thread_local!(
 
 const BUF_SIZE: usize = 1024 * 1024;
 
-fn open_file(path: &String, file: File) -> Result<Box<dyn Read>, error::MrgError> {
+///
+/// The function attempts to open a file,
+/// infers its type (e.g., whether it's an archive like gzip or bzip2),
+/// and returns a corresponding Read trait object that can be used to read the file's contents.
+/// If the file is not an archive or if it's an unsupported archive type, it returns an error.
+///
+/// # Arguments
+///
+/// * `path`: path to the file in the filesystem
+///
+/// returns: Result<Box<dyn Read>, MrgError>
+///
+/// # Examples
+///
+/// ```
+/// let f = open_file("/var/log/vector.log")
+/// ```
+fn open_file(path: &str) -> Result<Box<dyn Read>, error::MrgError> {
+    let file: File = File::open(path)?;
     let maybe_inferred_type: Option<Type> = infer::get_from_path(path).unwrap();
 
     if None == maybe_inferred_type {
@@ -39,15 +57,11 @@ fn open_file(path: &String, file: File) -> Result<Box<dyn Read>, error::MrgError
     }
 }
 
-fn make_reader(path: &String) -> Result<BufReader<Box<dyn Read>>, error::MrgError> {
-    let file: File = File::open(path)?;
-    Ok(BufReader::with_capacity(BUF_SIZE, open_file(path, file)?))
-}
-
 fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, error::MrgError> {
     let mut readers: Vec<BufReader<Box<dyn Read>>> = vec![];
     for path in paths {
-        readers.push(make_reader(path)?);
+        let reader = BufReader::with_capacity(BUF_SIZE, open_file(path)?);
+        readers.push(reader);
     }
     Ok(readers)
 }
@@ -228,18 +242,18 @@ fn main() -> Result<(), error::MrgError> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufRead;
+    use std::io::{BufRead, BufReader};
     #[test]
     fn normal_run() {
         let keys = vec![String::from("t")];
-        let in1 = std::io::BufReader::new(stringreader::StringReader::new(
+        let in1 = BufReader::new(stringreader::StringReader::new(
             r#"
 {"t":15, "add": "15_1"}
 {"t":16, "add": "16_1"}
 {"t":18, "add": "18_1"}
 "#,
         ));
-        let in2 = std::io::BufReader::new(stringreader::StringReader::new(
+        let in2 = BufReader::new(stringreader::StringReader::new(
             r#"
 {"t":16, "add": "16_2"}
 {"t":17, "add": "17_2"}
@@ -263,7 +277,10 @@ mod tests {
 
     #[test]
     fn open_file() {
-        let mut r = crate::make_reader(&String::from("tests/data/1.json")).unwrap();
+        let mut r = BufReader::with_capacity(
+            1024,
+            crate::open_file(&String::from("tests/data/1.json")).unwrap(),
+        );
         let mut line = String::new();
         r.read_line(&mut line).unwrap();
         let replaced = line.replace("\r", "").replace("\n", "");
