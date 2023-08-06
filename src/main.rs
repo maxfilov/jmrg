@@ -4,7 +4,7 @@ use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
-use infer::{MatcherType, Type};
+use infer::MatcherType;
 use serde_json;
 
 mod config;
@@ -21,7 +21,7 @@ const BUF_SIZE: usize = 1024 * 1024;
 /// The function attempts to open a file,
 /// infers its type (e.g., whether it's an archive like gzip or bzip2),
 /// and returns a corresponding Read trait object that can be used to read the file's contents.
-/// If the file is not an archive or if it's an unsupported archive type, it returns an error.
+/// If the file is not an archive or if it's an unsupported archive, tries to read it as is.
 ///
 /// # Arguments
 ///
@@ -36,24 +36,19 @@ const BUF_SIZE: usize = 1024 * 1024;
 /// ```
 fn open_file(path: &str) -> Result<Box<dyn Read>, error::MrgError> {
     let file: File = File::open(path)?;
-    let maybe_inferred_type: Option<Type> = infer::get_from_path(path).unwrap();
-
-    if None == maybe_inferred_type {
-        return Ok(Box::new(file));
-    }
-
-    let inferred_type = maybe_inferred_type.unwrap();
-    if inferred_type.matcher_type() != MatcherType::Archive {
-        return Ok(Box::new(file));
-    }
-
-    let extension = inferred_type.extension();
-    match extension {
-        "gz" => Ok(Box::new(flate2::read::GzDecoder::new(file))),
-        "bz2" => Ok(Box::new(bzip2::read::BzDecoder::new(file))),
-        _ => Err(error::MrgError {
-            msg: format!("cannot open archive of type {}", extension),
-        }),
+    match infer::get_from_path(path).unwrap() {
+        Some(inferred_type) => match inferred_type.matcher_type() {
+            MatcherType::Archive => match inferred_type.extension() {
+                "gz" => Ok(Box::new(flate2::read::GzDecoder::new(file))),
+                "bz2" => Ok(Box::new(bzip2::read::BzDecoder::new(file))),
+                // in case it's not archive we know about, we try to parse it as is
+                _ => Ok(Box::new(file)),
+            },
+            // in case it's not archive we try to parse it as is
+            _ => Ok(Box::new(file)),
+        },
+        // in case we couldn't not infer type, we try to parse it as is
+        None => Ok(Box::new(file)),
     }
 }
 
