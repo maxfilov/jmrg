@@ -68,53 +68,39 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
 
 struct Source<T: BufRead> {
     it: Lines<T>,
-    value: Option<String>,
-    ts: Option<i64>,
+    value: String,
+    ts: i64,
 }
 
 impl<T: BufRead> Source<T> {
-    fn new(s: T) -> Self {
-        let source = Source {
+    fn new(s: T) -> Option<Self> {
+        Source {
             it: s.lines(),
-            value: None,
-            ts: None,
-        };
-        source.fetch_next()
-    }
-
-    fn has_value(&self) -> bool {
-        self.ts.is_some()
-    }
-
-    fn fetch_next(mut self) -> Self {
-        loop {
-            let maybe_next_line: Option<std::io::Result<String>> = self.it.next();
-            if maybe_next_line.is_none() {
-                self.ts = None;
-                self.value = None;
-                break;
-            }
-            let next_line: std::io::Result<String> = unsafe { maybe_next_line.unwrap_unchecked() };
-            if next_line.is_err() {
-                eprintln!("cannot get next line: {}", unsafe {
-                    next_line.unwrap_err_unchecked()
-                });
-                continue;
-            }
-            let value: String = unsafe { next_line.unwrap_unchecked() };
-            let parsed_entry: serde_json::Result<Entry> = serde_json::from_str(value.as_str());
-            if parsed_entry.is_err() {
-                eprintln!("cannot parse entry: {}", unsafe {
-                    parsed_entry.unwrap_err_unchecked()
-                });
-                continue;
-            }
-            let entry: Entry = unsafe { parsed_entry.unwrap_unchecked() };
-            self.ts = Some(entry.key);
-            self.value = Some(value);
-            break;
+            value: String::new(),
+            ts: 0,
         }
-        self
+        .fetch_next()
+    }
+
+    fn fetch_next(mut self) -> Option<Self> {
+        while let Some(next_line) = self.it.next() {
+            match next_line {
+                Ok(value) => match serde_json::from_str::<Entry>(value.as_str()) {
+                    Ok(entry) => {
+                        self.ts = entry.key;
+                        self.value = value;
+                        return Some(self);
+                    }
+                    Err(e) => {
+                        eprintln!("cannot parse entry: {}", e);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("cannot get next line: {}", e);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -122,13 +108,13 @@ impl<T: BufRead> Eq for Source<T> {}
 
 impl<T: BufRead> PartialEq<Self> for Source<T> {
     fn eq(&self, other: &Self) -> bool {
-        unsafe { self.ts.unwrap_unchecked() == other.ts.unwrap_unchecked() }
+        self.ts == other.ts
     }
 }
 
 impl<T: BufRead> PartialOrd<Self> for Source<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        unsafe { Some(other.ts.unwrap_unchecked().cmp(&self.ts.unwrap_unchecked())) }
+        Some(other.ts.cmp(&self.ts))
     }
 }
 
@@ -156,7 +142,7 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor {
         let mut ts: Option<i64> = None;
 
         while let Some(k) = map.next_key::<&str>()? {
-            if KEYS.with(|s| s.borrow().contains(k)) && ts.is_none() {
+            if ts.is_none() && KEYS.with(|s| s.borrow().contains(k)) {
                 ts = Some(map.next_value::<i64>()?);
             } else {
                 map.next_value::<serde::de::IgnoredAny>()?;
@@ -167,7 +153,7 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor {
             Some(val) => Ok(Entry { key: val }),
             None => KEYS_STR.with(|s: &RefCell<String>| {
                 Err(serde::de::Error::custom(format!(
-                    "missing one the fields of set '{}'",
+                    "no fields of set '{}'",
                     s.borrow()
                 )))
             }),
@@ -193,7 +179,7 @@ pub fn run<Input: BufRead, Output: Write>(
     ins: Vec<Input>,
     out: &mut Output,
 ) -> Result<(), error::MrgError> {
-    // global semi-contants initialization
+    // global semi-constants initialization
     KEYS.with(|s: &RefCell<HashSet<String>>| s.borrow_mut().extend(keys));
     KEYS_STR.with(|keys_str: &RefCell<String>| {
         keys_str.borrow_mut().push_str(
@@ -209,34 +195,24 @@ pub fn run<Input: BufRead, Output: Write>(
     });
     let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
-        .map(|input: Input| Source::new(input))
-        .filter(|s: &Source<Input>| s.has_value())
+        .filter_map(|input: Input| Source::new(input))
         .collect();
     while !sources.is_empty() {
-        let mut source: Source<Input> = unsafe { sources.pop().unwrap_unchecked() };
-        writeln!(out, "{}", source.value.as_ref().unwrap().as_str())?;
-        source = source.fetch_next();
-        if !source.has_value() {
-            continue;
+        let source: Source<Input> = sources.pop().unwrap();
+        writeln!(out, "{}", source.value.as_str())?;
+        if let Some(s) = source.fetch_next() {
+            sources.push(s);
         }
-        sources.push(source);
     }
     Ok(())
 }
 
 fn main() -> Result<(), error::MrgError> {
     let cmd_args: Vec<String> = env::args().collect();
-    let maybe_args: Result<config::Arguments, error::MrgError> = config::parse(cmd_args);
-    if maybe_args.is_err() {
-        eprintln!("{}", unsafe { maybe_args.unwrap_err_unchecked() });
-        eprintln!("command arguments are invalid, run with '-h' to see usage");
-        std::process::exit(1);
-    }
-    let args: config::Arguments = maybe_args.unwrap();
+    let args: config::Arguments = config::parse(cmd_args)?;
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
-    let mut output: BufWriter<std::io::Stdout> =
-        BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
+    let mut output = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
     run(args.keys, sources, &mut output)
 }
 
