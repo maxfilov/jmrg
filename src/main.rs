@@ -1,19 +1,14 @@
-use std::cell::RefCell;
 use std::collections::{BinaryHeap, HashSet};
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 
 use infer::MatcherType;
+use serde::Deserializer;
 use serde_json;
 
 mod config;
 mod error;
-
-thread_local!(
-    static KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    static KEYS_STR: RefCell<String> = RefCell::new(String::new());
-);
 
 const BUF_SIZE: usize = 1024 * 1024;
 
@@ -61,35 +56,40 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
     Ok(readers)
 }
 
-struct Source<T: BufRead> {
-    it: Lines<T>,
+struct Source<'a, Input: BufRead> {
+    input: Lines<Input>,
     value: String,
     ts: i64,
+    keys: &'a HashSet<String>,
 }
 
-impl<T: BufRead> Source<T> {
-    fn new(s: T) -> Option<Self> {
-        Source {
-            it: s.lines(),
+impl<'a, Input: BufRead> Source<'a, Input> {
+    fn new(input: Input, keys: &'a HashSet<String>) -> Option<Self> {
+        Self {
+            input: input.lines(),
             value: String::new(),
             ts: 0,
+            keys,
         }
-        .fetch_next()
+            .fetch_next()
     }
 
     fn fetch_next(mut self) -> Option<Self> {
-        while let Some(next_line) = self.it.next() {
+        while let Some(next_line) = self.input.next() {
             match next_line {
-                Ok(value) => match serde_json::from_str::<Entry>(value.as_str()) {
-                    Ok(entry) => {
-                        self.ts = entry.key;
-                        self.value = value;
-                        return Some(self);
+                Ok(value) => {
+                    let mut deserializer = serde_json::de::Deserializer::from_str(value.as_str());
+                    match deserializer.deserialize_map(EntryVisitor { keys: self.keys }) {
+                        Ok(entry) => {
+                            self.ts = entry.key;
+                            self.value = value;
+                            return Some(self);
+                        }
+                        Err(e) => {
+                            eprintln!("cannot parse entry: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("cannot parse entry: {}", e);
-                    }
-                },
+                }
                 Err(e) => {
                     eprintln!("cannot get next line: {}", e);
                 }
@@ -99,45 +99,45 @@ impl<T: BufRead> Source<T> {
     }
 }
 
-impl<T: BufRead> Eq for Source<T> {}
+impl<'a, T: BufRead> Eq for Source<'a, T> {}
 
-impl<T: BufRead> PartialEq<Self> for Source<T> {
+impl<'a, T: BufRead> PartialEq<Self> for Source<'a, T> {
     fn eq(&self, other: &Self) -> bool {
         self.ts == other.ts
     }
 }
 
-impl<T: BufRead> PartialOrd<Self> for Source<T> {
+impl<'a, T: BufRead> PartialOrd<Self> for Source<'a, T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(other.ts.cmp(&self.ts))
     }
 }
 
-impl<T: BufRead> Ord for Source<T> {
+impl<T: BufRead> Ord for Source<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other.ts.cmp(&self.ts)
     }
 }
 
-struct EntryVisitor;
+struct EntryVisitor<'a> {
+    keys: &'a HashSet<String>,
+}
 
-impl<'de> serde::de::Visitor<'de> for EntryVisitor {
+impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
     type Value = Entry;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        KEYS_STR.with(|s: &RefCell<String>| {
-            write!(formatter, "map with keys from set '{}'", s.borrow())
-        })
+        write!(formatter, "map with keys from provided set")
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-    where
-        M: serde::de::MapAccess<'de>,
+        where
+            M: serde::de::MapAccess<'de>,
     {
         let mut ts: Option<i64> = None;
 
         while let Some(k) = map.next_key::<&str>()? {
-            if ts.is_none() && KEYS.with(|s| s.borrow().contains(k)) {
+            if ts.is_none() && self.keys.contains(k) {
                 ts = Some(map.next_value::<i64>()?);
             } else {
                 map.next_value::<serde::de::IgnoredAny>()?;
@@ -146,12 +146,7 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor {
 
         match ts {
             Some(val) => Ok(Entry { key: val }),
-            None => KEYS_STR.with(|s: &RefCell<String>| {
-                Err(serde::de::Error::custom(format!(
-                    "no fields of set '{}'",
-                    s.borrow()
-                )))
-            }),
+            None => Err(serde::de::Error::custom(format!("no fields of provided set"))),
         }
     }
 }
@@ -160,37 +155,16 @@ struct Entry {
     key: i64,
 }
 
-impl<'de> serde::de::Deserialize<'de> for Entry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        deserializer.deserialize_map(EntryVisitor)
-    }
-}
-
 pub fn run<Input: BufRead, Output: Write>(
     keys: Vec<String>,
     ins: Vec<Input>,
     out: &mut Output,
 ) -> Result<(), error::MrgError> {
     // global semi-constants initialization
-    KEYS.with(|s: &RefCell<HashSet<String>>| s.borrow_mut().extend(keys));
-    KEYS_STR.with(|keys_str: &RefCell<String>| {
-        keys_str.borrow_mut().push_str(
-            KEYS.with(|s: &RefCell<HashSet<String>>| {
-                s.borrow()
-                    .iter()
-                    .map(|x: &String| x.as_str())
-                    .collect::<Vec<&str>>()
-                    .join(", ")
-            })
-            .as_str(),
-        );
-    });
+    let key_set: HashSet<String> = HashSet::from_iter(keys.into_iter());
     let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
-        .filter_map(|input: Input| Source::new(input))
+        .filter_map(|input: Input| Source::new(input, &key_set))
         .collect();
     while !sources.is_empty() {
         let source: Source<Input> = sources.pop().unwrap();
@@ -214,6 +188,7 @@ fn main() -> Result<(), error::MrgError> {
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader};
+
     #[test]
     fn normal_run() {
         let keys = vec![String::from("t")];
