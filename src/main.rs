@@ -48,12 +48,13 @@ fn open_file(path: &str) -> Result<Box<dyn Read>, error::MrgError> {
 }
 
 fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, error::MrgError> {
-    let mut readers: Vec<BufReader<Box<dyn Read>>> = vec![];
-    for path in paths {
-        let reader = BufReader::with_capacity(BUF_SIZE, open_file(path)?);
-        readers.push(reader);
-    }
-    Ok(readers)
+    Ok(paths
+        .into_iter()
+        .map(|path| open_file(path))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|s| BufReader::with_capacity(BUF_SIZE, s))
+        .collect())
 }
 
 struct Source<'a, Input: BufRead> {
@@ -71,7 +72,7 @@ impl<'a, Input: BufRead> Source<'a, Input> {
             ts: 0,
             keys,
         }
-            .fetch_next()
+        .fetch_next()
     }
 
     fn fetch_next(mut self) -> Option<Self> {
@@ -131,8 +132,8 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-        where
-            M: serde::de::MapAccess<'de>,
+    where
+        M: serde::de::MapAccess<'de>,
     {
         let mut ts: Option<i64> = None;
 
@@ -146,7 +147,7 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
 
         match ts {
             Some(val) => Ok(Entry { key: val }),
-            None => Err(serde::de::Error::custom(format!("no fields of provided set"))),
+            None => Err(serde::de::Error::custom("no fields of the provided set")),
         }
     }
 }
