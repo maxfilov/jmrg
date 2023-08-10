@@ -59,7 +59,7 @@ fn make_readers(paths: &Vec<String>) -> Result<Vec<BufReader<Box<dyn Read>>>, er
 
 struct Source<'a, Input: BufRead> {
     input: Lines<Input>,
-    value: String,
+    raw_line: String,
     ts: i64,
     keys: &'a HashSet<String>,
 }
@@ -68,8 +68,8 @@ impl<'a, Input: BufRead> Source<'a, Input> {
     fn new(input: Input, keys: &'a HashSet<String>) -> Option<Self> {
         Self {
             input: input.lines(),
-            value: String::new(),
-            ts: 0,
+            raw_line: String::new(),
+            ts: -1,
             keys,
         }
         .fetch_next()
@@ -78,12 +78,12 @@ impl<'a, Input: BufRead> Source<'a, Input> {
     fn fetch_next(mut self) -> Option<Self> {
         while let Some(next_line) = self.input.next() {
             match next_line {
-                Ok(value) => {
-                    let mut deserializer = serde_json::de::Deserializer::from_str(value.as_str());
-                    match deserializer.deserialize_map(EntryVisitor { keys: self.keys }) {
-                        Ok(entry) => {
-                            self.ts = entry.key;
-                            self.value = value;
+                Ok(raw_line) => {
+                    let mut des = serde_json::de::Deserializer::from_str(raw_line.as_str());
+                    match des.deserialize_map(EntryVisitor { keys: self.keys }) {
+                        Ok(ts) => {
+                            self.ts = ts;
+                            self.raw_line = raw_line;
                             return Some(self);
                         }
                         Err(e) => {
@@ -125,12 +125,13 @@ struct EntryVisitor<'a> {
 }
 
 impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
-    type Value = Entry;
+    type Value = i64;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(formatter, "map with keys from provided set")
     }
 
+    #[inline]
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
     where
         M: serde::de::MapAccess<'de>,
@@ -145,15 +146,8 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
             }
         }
 
-        match ts {
-            Some(val) => Ok(Entry { key: val }),
-            None => Err(serde::de::Error::custom("no fields of the provided set")),
-        }
+        ts.ok_or(serde::de::Error::custom("no fields of the provided set"))
     }
-}
-
-struct Entry {
-    key: i64,
 }
 
 pub fn run<Input: BufRead, Output: Write>(
@@ -169,7 +163,7 @@ pub fn run<Input: BufRead, Output: Write>(
         .collect();
     while !sources.is_empty() {
         let source: Source<Input> = sources.pop().unwrap();
-        writeln!(out, "{}", source.value.as_str())?;
+        writeln!(out, "{}", source.raw_line.as_str())?;
         if let Some(s) = source.fetch_next() {
             sources.push(s);
         }
