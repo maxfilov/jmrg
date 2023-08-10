@@ -155,7 +155,6 @@ pub fn run<Input: BufRead, Output: Write>(
     ins: Vec<Input>,
     out: &mut Output,
 ) -> Result<(), error::MrgError> {
-    // global semi-constants initialization
     let key_set: HashSet<String> = HashSet::from_iter(keys.into_iter());
     let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
