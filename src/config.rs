@@ -17,18 +17,23 @@ pub fn parse(args: Vec<String>) -> Result<Arguments, error::MrgError> {
         )
         .arg(
             clap::Arg::new("files")
+                .required(true)
                 .help("List of files to merge")
                 .action(clap::ArgAction::Append),
         )
         .get_matches_from(args);
     let keys = matches
         .get_many::<String>("keys")
-        .ok_or(error::MrgError{msg: format!("no 'keys' are provided")})?
+        .ok_or(error::MrgError {
+            msg: "no 'keys' are provided".to_string(),
+        })?
         .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     let paths: Vec<String> = matches
         .get_many::<String>("files")
-        .ok_or(error::MrgError{msg: format!("no 'files' provided")})?
+        .ok_or(error::MrgError {
+            msg: "no 'files' provided".to_string(),
+        })?
         .map(|s: &String| s.to_string())
         .collect::<Vec<String>>();
     Ok(Arguments { keys, paths })
