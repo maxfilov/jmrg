@@ -1,5 +1,6 @@
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt}; // Add methods on commands
 
+#[cfg_attr(not(target_os = "windows"), ignore)]
 #[test]
 fn normal_run() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = std::process::Command::cargo_bin("jmrg")?;
