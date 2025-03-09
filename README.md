@@ -1,11 +1,11 @@
 # jmrg
 
 `jmrg` is a command line utility that allows you to merge multiple sorted [NDJSON](http://ndjson.org/)
-(Newline delimited JSON) files into a single stream.
+(Newline delimited JSON) files into a single sorted NDJSON stream.
 
 This can be useful for combining multiple data
 sources or processing large datasets that have been split into smaller files.
-The best example of this is merging of multiple log files.
+The initial application for this software was merging of log files.
 
 It uses [infer](https://docs.rs/infer/latest/infer/) to determine the file extension and can handle plain text, 
 gzip-compressed and bzip2-compressed files.
@@ -21,21 +21,23 @@ cargo install --git https://github.com/maxfilov/jmrg
 
 ## Usage
 
-To use `jmrg`, specify the input files as command line arguments and redirect
-the output to a file or another command. For example:
+To use `jmrg`, simply specify the input files as command line arguments 
+and the output will be printed to STDOUT. For example:
 ```shell
-jmrg input1.ndjson input2.ndjson > output.ndjson
+jmrg input1.ndjson input2.ndjson | jq > output.ndjson
 ```
-This will merge the contents of `input1.ndjson` and `input2.ndjson` into a single sorted stream and write it to `output.ndjson`.
+This will merge the contents of `input1.ndjson` and `input2.ndjson` into a single sorted stream, 
+pipe it through `jq` and write it to `output.ndjson`.
 
 If utility can not find any of the specified keys, it omits the entry completely.
-By default, there are only one key: `"timestamp"`.
+By default, there are two keys supported: `"timestamp"` and `"datetime"`.
 
 ### Command line options
 
 `jmrg` supports the following options:
 
-- `-k <field>`: specify the field to use for sorting, can be specified multiple times (default: 'timestamp')
+- `-k <field>`: specify the timestamp in MS field to use for sorting, can be specified multiple times (default: 'timestamp')
+- `-d <field>`: specify the iso8601 field to use for sorting, can be specified multiple times (default: 'datetime')
 - `-h,--help`: display help information and exit
 
 ## Contributing

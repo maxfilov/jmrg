@@ -242,6 +242,6 @@ mod tests {
         let mut line = String::new();
         r.read_line(&mut line).unwrap();
         let replaced = line.replace("\r", "").replace("\n", "");
-        assert_eq!(r#"{"t":15, "add": "15_1"}"#, replaced);
+        assert_eq!(r#"{"add": "15_1", "dt": "1970-01-01T00:00:00.015000000+00:00"}"#, replaced);
     }
 }
