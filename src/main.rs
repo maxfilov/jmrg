@@ -62,16 +62,18 @@ struct Source<'a, Input: BufRead> {
     input: Lines<Input>,
     raw_line: String,
     ts: i64,
-    keys: &'a HashSet<String>,
+    ts_keys: &'a HashSet<String>,
+    dt_keys: &'a HashSet<String>,
 }
 
 impl<'a, Input: BufRead> Source<'a, Input> {
-    fn new(input: Input, keys: &'a HashSet<String>) -> Option<Self> {
+    fn new(input: Input, ts_keys: &'a HashSet<String>, dt_keys: &'a HashSet<String>) -> Option<Self> {
         Self {
             input: input.lines(),
             raw_line: String::new(),
             ts: -1,
-            keys,
+            ts_keys: ts_keys,
+            dt_keys: dt_keys,
         }
         .fetch_next()
     }
@@ -81,7 +83,10 @@ impl<'a, Input: BufRead> Source<'a, Input> {
             match next_line {
                 Ok(raw_line) => {
                     let mut des = serde_json::de::Deserializer::from_str(raw_line.as_str());
-                    match des.deserialize_map(EntryVisitor { keys: self.keys }) {
+                    match des.deserialize_map(EntryVisitor {
+                        ts_keys: self.ts_keys,
+                        dt_keys: self.dt_keys,
+                    }) {
                         Ok(ts) => {
                             self.ts = ts;
                             self.raw_line = raw_line;
@@ -122,7 +127,8 @@ impl<T: BufRead> Ord for Source<'_, T> {
 }
 
 struct EntryVisitor<'a> {
-    keys: &'a HashSet<String>,
+    ts_keys: &'a HashSet<String>,
+    dt_keys: &'a HashSet<String>,
 }
 
 impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
@@ -144,13 +150,13 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
                 map.next_value::<serde::de::IgnoredAny>()?;
                 continue;
             }
-            if self.keys.contains(k) {
-                ts = Some(map.next_value::<i64>()?);
-                continue;
-            }
-            if k == "datetime" {
+            if self.dt_keys.contains(k) {
                 let dt = map.next_value::<chrono::DateTime<chrono::Utc>>()?;
                 ts = Some(dt.timestamp_millis());
+                continue;
+            }
+            if self.ts_keys.contains(k) {
+                ts = Some(map.next_value::<i64>()?);
                 continue;
             }
             map.next_value::<serde::de::IgnoredAny>()?;
@@ -161,14 +167,16 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
 }
 
 pub fn run<Input: BufRead, Output: Write>(
-    keys: Vec<String>,
+    ts_keys: Vec<String>,
+    dt_keys: Vec<String>,
     ins: Vec<Input>,
     out: &mut Output,
 ) -> Result<(), error::MrgError> {
-    let key_set: HashSet<String> = HashSet::from_iter(keys.into_iter());
+    let ts_key_set: HashSet<String> = HashSet::from_iter(ts_keys.into_iter());
+    let dt_key_set: HashSet<String> = HashSet::from_iter(dt_keys.into_iter());
     let mut sources: BinaryHeap<Source<Input>> = ins
         .into_iter()
-        .filter_map(|input: Input| Source::new(input, &key_set))
+        .filter_map(|input: Input| Source::new(input, &ts_key_set, &dt_key_set))
         .collect();
     while !sources.is_empty() {
         let source: Source<Input> = sources.pop().unwrap();
@@ -186,7 +194,7 @@ fn main() -> Result<(), error::MrgError> {
 
     let sources: Vec<BufReader<Box<dyn Read>>> = make_readers(&args.paths)?;
     let mut output = BufWriter::with_capacity(BUF_SIZE, std::io::stdout());
-    run(args.keys, sources, &mut output)
+    run(args.ts_keys, args.dt_keys, sources, &mut output)
 }
 
 #[cfg(test)]
@@ -211,7 +219,7 @@ mod tests {
 "#,
         ));
         let mut buf = std::io::BufWriter::new(Vec::new());
-        crate::run(keys, vec![in1, in2], &mut buf).unwrap();
+        crate::run(keys, vec![], vec![in1, in2], &mut buf).unwrap();
         let result = String::from_utf8(buf.into_inner().unwrap()).unwrap();
         assert_eq!(
             r#"{"t":15, "add": "15_1"}
