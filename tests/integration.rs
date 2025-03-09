@@ -9,7 +9,7 @@ fn normal_run() -> Result<(), Box<dyn std::error::Error>> {
         .arg("./tests/data/3.json.bz2");
 
     let pred = predicates::str::is_match(
-        "\\{\"t\":15, \"add\": \"15_1\"\\}\
+        "\\{\"add\": \"15_1\"\\, \"datetime\": \"1970-01-01T00:00:00\\.015000000\\+00:00\"}\
         \n\\{\"t\":15, \"add\": \"15_3\"\\}\
         \n\\{\"t\":16, \"add\": \"16_2\"\\}\
         \n\\{\"t\":16, \"add\": \"16_1\"\\}\

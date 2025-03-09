@@ -2,6 +2,7 @@ use std::collections::{BinaryHeap, HashSet};
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
+use chrono;
 
 use infer::MatcherType;
 use serde::Deserializer;
@@ -139,11 +140,20 @@ impl<'de> serde::de::Visitor<'de> for EntryVisitor<'de> {
         let mut ts: Option<i64> = None;
 
         while let Some(k) = map.next_key::<&str>()? {
-            if ts.is_none() && self.keys.contains(k) {
-                ts = Some(map.next_value::<i64>()?);
-            } else {
+            if !ts.is_none() {
                 map.next_value::<serde::de::IgnoredAny>()?;
+                continue;
             }
+            if self.keys.contains(k) {
+                ts = Some(map.next_value::<i64>()?);
+                continue;
+            }
+            if k == "datetime" {
+                let dt = map.next_value::<chrono::DateTime<chrono::Utc>>()?;
+                ts = Some(dt.timestamp_millis());
+                continue;
+            }
+            map.next_value::<serde::de::IgnoredAny>()?;
         }
 
         ts.ok_or(serde::de::Error::custom("no fields of the provided set"))
